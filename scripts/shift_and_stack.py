@@ -1,4 +1,4 @@
-from astropy import units, wcs
+from astropy import units
 from astropy.utils.exceptions import AstropyWarning
 import logging
 import warnings
@@ -25,7 +25,7 @@ def main():
     group.add_argument('--ra-dec-rate-angle', nargs=4,
                        help="RA (deg) DEC (deg) Rate (arcsec/hr) and angle (deg) of motion to shift and stack at")
     group.add_argument('--x-y-rate-angle', nargs=4,
-                       help="x (pix) y (pix) of candidate and Rate (pix/hr) and angle (deg) of motion to shift and stack at")
+                       help="x (pix) y (pix), rate (pix/hr) and angle (deg) of motion for cutout and shift")
     parser.add_argument('--observer-location', default='500', help="Observer location based on JPL notation")
     parser.add_argument('--duration', default=20,
                         help="Write a combined image after duration (in minutes) has passed.  If timespan covered by "
@@ -65,11 +65,19 @@ def main():
     time_sorted_images = sorted(images, key=lambda xx: xx.obs_date)
 
     if opts.target:
-        orbit = utils.load_orbit(opts.target, location=opts.observer_location)
+        import os
+        ast_filename = utils.get_filename(opts.target, exists=True)
+        print(ast_filename)
+        if os.access(ast_filename, os.R_OK):
+            from mp_ephem import BKOrbit
+            orbit = BKOrbit(None, ast_filename)
+            print(orbit.summarize())
+        else:
+            orbit = utils.load_orbit(opts.target, location=opts.observer_location)
     elif opts.x_y_rate_angle:
         x, y, rate, angle = [float(x) for x in opts.x_y_rate_angle]
         ra, dec = images[0].wcs.all_pix2world(x, y, 1)
-        rate = images[0].wcs.pixel_scale_matrix[0][0] * units.degree / units.hour
+        rate = rate*images[0].header['PIXSCAL1'] * units.arcsecond / units.hour
         angle *= units.degree
         ra *= units.degree
         dec *= units.degree
@@ -80,7 +88,7 @@ def main():
         logging.debug("Centre of input image: {} {}".format(ra, dec))
         ra *= units.degree
         dec *= units.degree
-        rate *= units.arcsec/units.hour
+        rate *= rate*units.arcsec/units.hour
         angle *= units.degree
         orbit = RateAngle(rate=rate, angle=angle, ra0=ra, dec0=dec)
 

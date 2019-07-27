@@ -17,9 +17,11 @@ class RateAngle(object):
         self.ra0 = Quantity(ra0)
         self.dec0 = Quantity(dec0)
         self.coordinate = None
-        r = (self.rate * 1 * units.hour).to('arcsec').value
-        a = self.angle.to('degree')
-        self.name = "R{:0.1f}A{:05.1f}".format(r, a)
+        print("Combining frame at {} along angle {}".format(self.rate, self.angle))
+        r = self.rate.to('arcsec/hour').value
+        a = self.angle.to('degree').value
+        self.name = "R{:06.1f}A{:05.1f}".format(r, a)
+
         logging.debug("Computing for rate: {} and angle: {} centred at {} {}".format(self.rate, self.angle,
                                                                                      self.ra0, self.dec0))
 

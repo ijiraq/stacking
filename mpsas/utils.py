@@ -9,13 +9,30 @@ from astropy.time import Time
 from scipy import ndimage
 
 
+def get_filename(basename, extension='ast', exists=False):
+    cnt = 0
+    answer = None
+    while True:
+        cnt += 1
+        filename = "{}_{:03d}.{}".format(basename, cnt, extension)
+        if answer is None:
+            answer = filename
+        if os.access(filename, os.R_OK) and exists:
+            answer = filename
+            continue
+        if not os.access(filename, os.R_OK):
+            if not exists:
+                answer = filename
+            break
+    return answer
+
+
 def get_sky_background(image, bounding_box, sky_col=5, x_col=1, y_col=2):
     """
     Compute the mean sky background of the image using either a source_extractor catalog or mode of random pixel values.
 
-    :param filename: image or source sextractor catalog
+    :param image: image to get sky level of.
     :param bounding_box: the x/y bounding box to determine the sky value inside of (x1,x2,y1,y2)
-    :param extno: the extension number in the FITS image containing the data of interest.
     :param sky_col: column in source extractor file that holds the sky value (one-based numbering)
     :param x_col: column in source extractor file that holds the x column (one-based, used for bounding limits)
     :param y_col: column in source extractor file that holds the y column (one-based, used for bounding limits)
@@ -61,10 +78,12 @@ def get_sky_background(image, bounding_box, sky_col=5, x_col=1, y_col=2):
             sky = float(np.percentile(data[cond], 50))
             std = np.std(data[cond])
         except Exception as ex:
+            logging.error(str(bounding_box))
+            logging.error(str(image.filename))
             logging.error(str(ex))
-            logging.debug("Failed to get sky for {}, using 0 +/- 1E9".format(filename))
-            sky = 0
-            std = 1E9
+            logging.debug("Failed to get sky for {}, using 0 +/- 1E9".format(image.filename))
+            sky = None
+            std = None
         return sky, std
 
 
@@ -194,8 +213,7 @@ def build_stack(time_sorted_images, orbit,
     stack_number = 0
     stack_image_header = None
     stack_start_date = None
-    stack_end_date = None
-
+    sky = 1000
     for image in time_sorted_images:
         logging.debug("Checking if {} should be in the stack.".format(image.filename))
 
@@ -231,8 +249,11 @@ def build_stack(time_sorted_images, orbit,
         if (image.end_date - stack_start_date) > stack_duration:
             # we have accumulated images of length duration so we write the stack out to file.
             # and the start a new stack using the current image
-            fits.PrimaryHDU(header=stack_image_header, data=percentile_stack(stack_hdulist)). \
-                writeto('{}_{:05d}.fits'.format(output_basename, stack_number), overwrite=True)
+
+            median_data = percentile_stack(stack_hdulist)
+            tmphdu = fits.PrimaryHDU(header=stack_image_header, data=median_data)
+            tmphdu.writeto('{}_{:05d}.fits'.format(output_basename, stack_number), overwrite=True)
+
             # Increment the stack number, used to create a unique filename.
             stack_number += 1
             # Reset the contents of the stack to empty.
@@ -261,7 +282,12 @@ def build_stack(time_sorted_images, orbit,
         (sky, std) = get_sky_background(image, (x1, x2, y1, y2))
 
         # subtract the sky, scale the flux and extract from the input dataset.
+        # Reset the PHOTZP and EXPTIME keywords to reflect new values.
         data = (data[int(y1):int(y2), int(x1):int(x2)] - sky) / image.exptime.value
+        image.header['PHOTZP'] = image.header['PHOTZP'] - 2.5*np.log10(float(image.header['EXPTIME']))
+        image.header['EXPTIME'] = 1.0
+        image.header['SKY_MEAN'] = sky
+        image.header['SKY_STD'] = std
         logging.debug("After cutout extraction data has the shape: {}".format(data.shape))
 
         if std is not None and clip is True:

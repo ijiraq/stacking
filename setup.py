@@ -7,7 +7,7 @@ dependencies = ['requests >= 2.7',
                 'numpy',
                 'scipy',
                 'mp_ephem',
-                'sip_tpv']
+                'sip_tpv', 'ossos', 'pyds9']
 
 # Build the list of tools and scripts to be installed.
 script_dirs = ['scripts']
@@ -18,7 +18,8 @@ for script_dir in script_dirs:
             continue
         scripts.append(os.path.join(script_dir, script))
 
-console_scripts = [ 'shift_and_stack = shift_and_stack:main']
+console_scripts = [ 'shift_and_stack = shift_and_stack:main', 'mp_measure = measure:app',
+                    'orbit_summary = orbit_summary:app']
 
 setup(name='shift_and_stack',
       version='0.1.dev1',
